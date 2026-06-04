@@ -4,40 +4,36 @@ import { audioManager } from './AudioManager';
 
 function RiveInstance({ onResetRequest }) {
   const { rive, RiveComponent } = useRive({
-    src: '/rive/game.riv', 
+    src: 'rive/game.riv', 
     stateMachines: 'State Machine 1', 
     autoplay: true,
     autoBind: true, 
+    // Reverted back to Fit.Layout so the Rive Editor controls the responsiveness
     layout: new Layout({ fit: Fit.Layout, alignment: Alignment.Center }),
   });
 
   const hasFadedRef = useRef(false);
 
-  // 1. Updated Audio & System Event Listener
   useEffect(() => {
     if (rive) {
       const onRiveEvent = (riveEvent) => {
-        // --- DEEP LOG ---
-        // This will show us the full structure so we can see where the name is hidden
         console.log("📦 Full Rive Event Object:", riveEvent);
-
-        // In WebGL2, the name is often inside riveEvent.data.name
         const eventData = riveEvent.data;
         const eventName = eventData ? eventData.name : riveEvent.name;
-
         console.log("🔔 Detected Event Name:", eventName);
 
-        // CHECK FOR RESET EVENT
         if (eventName === 'playAgain') {
           console.log("🔄 MATCH FOUND: Executing Reset...");
           onResetRequest();
           return;
         }
 
-        // Handle Audio Properties
         if (eventData && eventData.properties) {
           const props = eventData.properties;
-          if (props.type === 'audio') audioManager.handleEvent(props);
+          // UPDATED: Now allows both 'audio' and 'channel' events through to the manager
+          if (props.type === 'audio' || props.type === 'channel') {
+            audioManager.handleEvent(props);
+          }
         }
       };
 
@@ -46,7 +42,6 @@ function RiveInstance({ onResetRequest }) {
     }
   }, [rive, onResetRequest]);
 
-  // View Model Syncer
   useEffect(() => {
     if (!rive) return;
     const intervalId = setInterval(() => {
@@ -58,7 +53,7 @@ function RiveInstance({ onResetRequest }) {
           const voProp = vm.boolean ? vm.boolean("voiceover") : null;
           if (musicProp) audioManager.setChannelMute("music", !musicProp.value);
           if (sfxProp) audioManager.setChannelMute("sfx", !sfxProp.value);
-          if (voProp) audioManager.setChannelMute("voiceover", !voProp.value);
+          if (voProp) audioManager.setChannelMute("dialogue", !voProp.value);
 
           const sceneManager = vm.enum ? vm.enum("sceneManager") : null;
           if (sceneManager) {
@@ -81,14 +76,56 @@ function RiveInstance({ onResetRequest }) {
 
 export default function RiveDisplay() {
   const [resetKey, setResetKey] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef(null); 
 
   const handleReset = () => {
     setResetKey(prev => prev + 1);
   };
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
   return (
-    <div key={resetKey} style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+    <div ref={containerRef} key={resetKey} style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative', background: '#FFFFFF' }}>
       <RiveInstance onResetRequest={handleReset} />
+      
+      {!isFullscreen && (
+        <button 
+          onClick={toggleFullscreen}
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            right: '20px',
+            padding: '10px 15px',
+            zIndex: 10,
+            cursor: 'pointer',
+            background: 'rgba(255,255,255,0.85)',
+            border: 'none',
+            borderRadius: '4px',
+            fontWeight: 'bold',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+          }}
+        >
+          ⛶ Fullscreen
+        </button>
+      )}
     </div>
   );
 }

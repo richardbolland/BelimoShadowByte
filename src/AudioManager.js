@@ -1,13 +1,26 @@
 class AudioManager {
   constructor() {
     this.audioElements = new Map();
-    this.channelMutes = { music: false, sfx: false, voiceover: false };
+    this.channelMutes = { music: false, sfx: false, dialogue: false };
     this.pitchVariance = 0.15; 
   }
 
   handleEvent(properties) {
-    const filename = properties.target; 
+    const type = properties.type;
     const action = properties.action || 'play';
+
+    // --- NEW: Handle Channel-Wide Actions (Like your StopDialogue event) ---
+    if (type === 'channel') {
+      const channelName = properties.target; // Grabs "dialogue" from your Rive event
+      
+      if (action === 'stop') {
+        this.stopChannel(channelName);
+      }
+      return; // Exit out, so it doesn't try to play a file named "dialogue"
+    }
+
+    // --- EXISTING: Handle Individual Audio Files ---
+    const filename = properties.target; 
     const channel = properties.channel || 'sfx'; 
 
     if (!filename) return;
@@ -28,11 +41,23 @@ class AudioManager {
     }
   }
 
+  // --- NEW: Loops through the Map and stops audio for the requested channel ---
+  stopChannel(channelName) {
+    console.log(`🛑 Instant stop applied to channel: ${channelName}`);
+    this.audioElements.forEach((audio, filename) => {
+      if (audio.dataset.channel === channelName && !audio.paused) {
+        audio.pause();
+        audio.currentTime = 0;
+        console.log(`🔇 Killed overlapping file: ${filename}`);
+      }
+    });
+  }
+
   play(filename, loop, channel, usePitchShift = false) {
     let audio = this.audioElements.get(filename);
     
     if (!audio) {
-      audio = new Audio(`/audio/${filename}`);
+      audio = new Audio(`audio/${filename}`);
       audio.dataset.channel = channel; 
       this.audioElements.set(filename, audio);
     }
